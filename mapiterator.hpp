@@ -12,13 +12,8 @@ namespace xsg
 template <typename T>
 class mapiterator
 {
-  using inverse_const_t = std::conditional_t<
-    std::is_const_v<T>,
-    mapiterator<std::remove_const_t<T>>,
-    mapiterator<T const>
-  >;
-
-  friend inverse_const_t;
+  using iterator_t = mapiterator<std::remove_const_t<T>>;
+  friend mapiterator<T const>;
 
   T* n_, *p_;
   T* const* r_;
@@ -34,6 +29,9 @@ public:
 
   using pointer = value_type*;
   using reference = value_type&;
+
+  template <typename, typename, class> friend class map;
+  template <typename, class> friend class set;
 
 public:
   mapiterator() = default;
@@ -61,7 +59,7 @@ public:
   mapiterator(mapiterator const&) = default;
   mapiterator(mapiterator&&) = default;
 
-  mapiterator(inverse_const_t const& o) noexcept requires(std::is_const_v<T>):
+  mapiterator(iterator_t const& o) noexcept requires(std::is_const_v<T>):
     n_(o.n_),
     p_(o.p_),
     r_(o.r_)
@@ -72,13 +70,18 @@ public:
   mapiterator& operator=(mapiterator const&) = default;
   mapiterator& operator=(mapiterator&&) = default;
 
+  mapiterator& operator=(iterator_t const& o) noexcept
+    requires(std::is_const_v<T>)
+  {
+    n_ = o.n_; p_ = o.p_; r_ = o.r_; return *this;
+  }
+
   bool operator==(mapiterator const& o) const noexcept { return n_ == o.n_; }
 
   // increment, decrement
   auto& operator++() noexcept
   {
-    std::tie(n_, p_) = detail::next_node(n_, p_);
-    return *this;
+    std::tie(n_, p_) = detail::next_node(n_, p_); return *this;
   }
 
   auto& operator--() noexcept
@@ -86,19 +89,36 @@ public:
     std::tie(n_, p_) = n_ ?
       detail::prev_node(n_, p_) :
       detail::last_node(*r_, {});
+
     return *this;
   }
 
-  auto operator++(int) noexcept { auto const r(*this); ++*this; return r; }
-  auto operator--(int) noexcept { auto const r(*this); --*this; return r; }
+  mapiterator operator++(int) noexcept
+  {
+    auto const n(n_), p(p_);
+
+    std::tie(n_, p_) = detail::next_node(n_, p_);
+
+    return {r_, n, p};
+  }
+
+  mapiterator operator--(int) noexcept
+  {
+    auto const n(n_), p(p_);
+
+    std::tie(n_, p_) = n_ ?
+      detail::prev_node(n_, p_) :
+      detail::last_node(*r_, {});
+
+    return {r_, n, p};
+  }
 
   // member access
   auto operator->() const noexcept { return &n_->kv_; }
   auto& operator*() const noexcept { return n_->kv_; }
 
   //
-  auto n() const noexcept { return n_; }
-  auto p() const noexcept { return p_; }
+  explicit operator bool() const noexcept { return n_; }
 };
 
 }

@@ -51,11 +51,7 @@ public:
       noexcept(noexcept(new node(std::forward<decltype(k)>(k))))
       requires(detail::Comparable<Compare, decltype(k), key_type>)
     {
-      enum Direction: bool { LEFT, RIGHT };
-
-      node* q, *qp;
-
-      auto const create_node([&](decltype(q) const p)
+      auto const create_node([&](node* const p)
         noexcept(noexcept(new node(std::forward<decltype(k)>(k))))
         {
           auto const q(new node(std::forward<decltype(k)>(k)));
@@ -65,115 +61,31 @@ public:
         }
       );
 
-      auto const f([&](auto&& f, auto const n, decltype(n) p,
-        enum Direction const d)
-        noexcept(noexcept(create_node({}))) -> size_type
-        {
-          size_type sl, sr;
-
-          if (auto const c(cmp(k, n->key())); c < 0)
-          {
-            if (auto const l(detail::left_node(n, p)); l)
-            {
-              if (auto const sz(f(f, l, n, LEFT)); sz)
-              {
-                sl = sz;
-              }
-              else
-              {
-                return {};
-              }
-            }
-            else
-            {
-              sl = bool(q = create_node(qp = n));
-              n->l_ = detail::conv(q, p);
-            }
-
-            sr = detail::size(detail::right_node(n, p), n);
-          }
-          else if (c > 0)
-          {
-            if (auto const r(detail::right_node(n, p)); r)
-            {
-              if (auto const sz(f(f, r, n, RIGHT)); sz)
-              {
-                sr = sz;
-              }
-              else
-              {
-                return {};
-              }
-            }
-            else
-            {
-              sr = bool(q = create_node(qp = n));
-              n->r_ = detail::conv(q, p);
-            }
-
-            sl = detail::size(detail::left_node(n, p), n);
-          }
-          else
-          {
-            (qp = p, q = n)->v_.emplace_back(std::forward<decltype(k)>(k));
-
-            return {};
-          }
-
-          //
-          if (auto const s(1 + sl + sr), S(2 * s);
-            (3 * sl > S) || (3 * sr > S))
-          {
-            if (auto const nn(rebalance(n, p, q, qp, s)); p)
-            {
-              d ?
-                p->r_ = detail::conv(nn, detail::right_node(p, n)) :
-                p->l_ = detail::conv(nn, detail::left_node(p, n));
-            }
-            else
-            {
-              r = nn;
-            }
-
-            return {};
-          }
-          else
-          {
-            return s;
-          }
-        }
-      );
-
       if (r)
       {
-        f(f, r, {}, {});
+        auto const [q, qp, s](detail::emplace(r, k, create_node));
+
+        if (!s) q->v_.emplace_back(std::forward<decltype(k)>(k));
+
+        return std::pair(q, qp);
       }
       else
       {
-        r = q = create_node(qp = {});
+        return std::pair<node*, node*>(r = create_node({}), {});
       }
-
-      return std::pair(q, qp);
     }
 
     static auto emplace(auto& r, auto&& ...a)
-      noexcept(noexcept(
-          node::emplace(
-            r,
-            key_type(std::forward<decltype(a)>(a)...)
-          )
-        )
-      )
+      noexcept(noexcept(node::emplace(r,
+        key_type(std::forward<decltype(a)>(a)...))))
       requires(std::is_constructible_v<key_type, decltype(a)...>)
     {
       return node::emplace(r, key_type(std::forward<decltype(a)>(a)...));
     }
 
     static iterator erase(auto& r0, const_iterator const i)
-      noexcept(
-        noexcept(std::declval<node>().v_.erase(i.i())) &&
-        noexcept(node::erase(r0, i.n(), i.p()))
-      )
+      noexcept(noexcept(std::declval<node>().v_.erase(i.i()),
+        node::erase(r0, i.n(), i.p())))
     {
       if (auto const n(i.n()), p(i.p()); 1 == n->v_.size())
       {
@@ -346,7 +258,7 @@ public:
       return std::tuple(nnn, nnp, s);
     }
 
-    static auto erase(auto& r0, auto&& k)
+    static auto erase(auto& r0, auto const& k)
       noexcept(noexcept(erase(r0, r0, r0, r0, {})))
     {
       using pointer = std::remove_cvref_t<decltype(r0)>;
@@ -391,78 +303,6 @@ public:
 
       return erase(r0, pp, p, n, q);
     }
-
-    static auto rebalance(auto const n, decltype(n) p,
-      decltype(n) q, auto& qp, size_type const sz) noexcept
-    {
-      auto const l(static_cast<node**>(XSG_ALLOCA(sizeof(node*) * sz)));
-
-      {
-        auto f([l(l)](auto&& f, auto const n,
-          decltype(n) const p) mutable noexcept -> void
-          {
-            if (n)
-            {
-              f(f, detail::left_node(n, p), n);
-
-              *l++ = n;
-
-              f(f, detail::right_node(n, p), n);
-            }
-          }
-        );
-
-        f(f, n, p);
-      }
-
-      auto const f([l, q, &qp](auto&& f, auto const p,
-        size_type const a, decltype(a) b) noexcept -> node*
-        {
-          auto const i((a + b) / 2);
-          auto const n(l[i]);
-
-          if (n == q)
-          {
-            qp = p;
-          }
-
-          switch (b - a)
-          {
-            case 0:
-              n->l_ = n->r_ = detail::conv(p);
-
-              break;
-
-            case 1:
-              {
-                // n - nb
-                auto const nb(l[b]);
-
-                if (nb == q)
-                {
-                  qp = n;
-                }
-
-                nb->l_ = nb->r_ = detail::conv(n);
-                n->l_ = detail::conv(p); n->r_ = detail::conv(nb, p);
-              }
-
-              break;
-
-            default:
-              detail::assign(n->l_, n->r_)(
-                detail::conv(f(f, n, a, i - 1), p),
-                detail::conv(f(f, n, i + 1, b), p)
-              );
-          }
-
-          return n;
-        }
-      );
-
-      //
-      return f(f, p, {}, sz - 1);
-    }
   };
 
 private:
@@ -492,9 +332,9 @@ public:
   }
 
   multiset(std::initializer_list<value_type> l)
-    noexcept(noexcept(*this = l))
+    noexcept(noexcept(multiset(l.begin(), l.end()))):
+    multiset(l.begin(), l.end())
   {
-    insert(l.begin(), l.end());
   }
 
   ~multiset() noexcept(noexcept(delete root_)) { detail::destroy(root_, {}); }
@@ -520,7 +360,7 @@ public:
 
   //
   template <int = 0>
-  size_type count(auto&& k) const noexcept
+  size_type count(auto const& k) const noexcept
     requires(detail::Comparable<Compare, decltype(k), key_type>)
   {
     for (decltype(root_) p{}, n(root_); n;)
@@ -542,7 +382,7 @@ public:
     return {};
   }
 
-  auto count(key_type k) const noexcept { return count<0>(std::move(k)); }
+  auto count(key_type const k) const noexcept { return count<0>(k); }
 
   //
   iterator emplace(auto&& ...a)
@@ -633,18 +473,26 @@ public:
 
 //////////////////////////////////////////////////////////////////////////////
 template <int = 0, typename K, class C>
-inline auto erase(multiset<K, C>& c, auto&& k)
-  noexcept(noexcept(c.erase(std::forward<decltype(k)>(k))))
-  requires(detail::Comparable<Compare, decltype(k), key_type>)
+inline auto erase(multiset<K, C>& c, auto const& k)
+  noexcept(noexcept(c.erase(K(k))))
+  requires(!detail::Comparable<C, decltype(k), K>)
 {
-  return c.erase(std::forward<decltype(k)>(k));
+  return c.erase(K(k));
+}
+
+template <int = 0, typename K, class C>
+inline auto erase(multiset<K, C>& c, auto const& k)
+  noexcept(noexcept(c.erase(k)))
+  requires(detail::Comparable<C, decltype(k), K>)
+{
+  return c.erase(k);
 }
 
 template <typename K, class C>
-inline auto erase(multiset<K, C>& c, std::type_identity_t<K> k)
-  noexcept(noexcept(erase<0>(c, std::move(k))))
+inline auto erase(multiset<K, C>& c, K const k)
+  noexcept(noexcept(erase<0>(c, k)))
 {
-  return erase<0>(c, std::move(k));
+  return erase<0>(c, k);
 }
 
 template <typename K, class C>

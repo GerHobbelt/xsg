@@ -584,9 +584,9 @@ public:
       }
 
       auto const f([l, q, &qp](auto&& f, auto const p,
-        size_type const a, decltype(a) b) noexcept -> node*
+        std::size_t const a, decltype(a) b) noexcept -> node*
         {
-          auto const i((a + b) / 2);
+          auto const i(std::midpoint(a, b));
           auto const n(l[i]);
 
           if (n == q)
@@ -677,9 +677,9 @@ public:
   }
 
   intervalmap(std::initializer_list<value_type> l)
-    noexcept(noexcept(*this = l))
+    noexcept(noexcept(intervalmap(l.begin(), l.end()))):
+    intervalmap(l.begin(), l.end())
   {
-    insert(l.begin(), l.end());
   }
 
   ~intervalmap() noexcept(noexcept(delete root_))
@@ -708,7 +708,7 @@ public:
 
   //
   template <int = 0>
-  size_type count(auto&& k) const noexcept
+  size_type count(auto const& k) const noexcept
     requires(
       detail::Comparable<
         Compare,
@@ -716,7 +716,6 @@ public:
         decltype(node::m_)
       >
     )
-    requires(detail::Comparable<Compare, decltype(k), key_type>)
   {
     for (decltype(root_) p{}, n(root_); n;)
     {
@@ -737,7 +736,7 @@ public:
     return {};
   }
 
-  auto count(key_type k) const noexcept { return count<0>(std::move(k)); }
+  auto count(key_type const k) const noexcept { return count<0>(k); }
 
   //
   template <int = 0>
@@ -977,15 +976,26 @@ public:
 template <int = 0, typename K, typename V, class C>
 inline auto erase(intervalmap<K, V, C>& c, auto&& k)
   noexcept(noexcept(c.erase(std::forward<decltype(k)>(k))))
+  requires(
+    detail::Comparable<
+      C,
+      decltype(std::get<0>(k)),
+      decltype(intervalmap<K, V, C>::node::m_)
+    > &&
+    !std::same_as<
+      decltype(intervalmap<K, V, C>::node::m_),
+      std::remove_cvref_t<decltype(k)>
+    >
+  )
 {
   return c.erase(std::forward<decltype(k)>(k));
 }
 
 template <typename K, typename V, class C>
-inline auto erase(intervalmap<K, V, C>& c, std::type_identity_t<K> k)
-  noexcept(noexcept(erase<0>(c, std::move(k))))
+inline auto erase(intervalmap<K, V, C>& c, K const& k)
+  noexcept(noexcept(erase<0>(c, k)))
 {
-  return erase<0>(c, std::move(k));
+  return erase<0>(c, k);
 }
 
 template <typename K, typename V, class C>
