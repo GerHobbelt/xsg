@@ -123,7 +123,7 @@ public:
       decltype(pp) n, std::uintptr_t* const q)
       noexcept(noexcept(delete r0))
     {
-      auto const s(n->v_.size());
+      auto const s(n->v_.size()); // !!!
       auto [nnn, nnp](detail::next_node(n, p));
 
       // pp - p - n - lr
@@ -294,7 +294,7 @@ public:
         }
       }
 
-      return std::tuple(pointer{}, pointer{}, size_type{});
+      return std::tuple(pointer{}, pointer{}, decltype(r0->v_.size()){});
     }
 
     static auto erase(auto& r0, auto const n, decltype(n) const p)
@@ -355,16 +355,17 @@ public:
 # include "common.hpp"
 
   //
-  size_type size() const noexcept
+  auto size() const noexcept
   {
     static constinit auto const f(
-      [](auto&& f, auto const n, decltype(n) p) noexcept -> size_type
+      [](auto&& f, auto const n, decltype(n) p) noexcept ->
+        decltype(n->v_.size())
       {
         return n ?
           n->v_.size() +
           f(f, detail::left_node(n, p), n) +
           f(f, detail::right_node(n, p), n) :
-          size_type{};
+          decltype(n->v_.size()){};
       }
     );
 
@@ -373,7 +374,7 @@ public:
 
   //
   template <int = 0>
-  size_type count(auto const& k) const noexcept
+  auto count(auto const& k) const noexcept
     requires(detail::Comparable<Compare, decltype(k), key_type>)
   {
     for (decltype(root_) p{}, n(root_); n;)
@@ -392,7 +393,7 @@ public:
       }
     }
 
-    return {};
+    return decltype(root_->v_.size()){};
   }
 
   auto count(key_type const k) const noexcept { return count<0>(k); }
@@ -459,7 +460,7 @@ public:
 
   //
   template <int = 0>
-  size_type erase(auto&& k)
+  auto erase(auto&& k)
     noexcept(noexcept(node::erase(root_, k)))
     requires(detail::Comparable<Compare, decltype(k), key_type> &&
       !std::convertible_to<decltype(k), const_iterator>)
@@ -552,7 +553,7 @@ inline auto erase_if(multimap<K, V, C>& c, auto pred)
 {
   typename std::remove_reference_t<decltype(c)>::size_type r{};
 
-  for (auto i(c.begin()); i.n(); pred(*i) ? ++r, i = c.erase(i) : ++i);
+  for (auto i(c.begin()); i; pred(*i) ? ++r, i = c.erase(i) : ++i);
 
   return r;
 }
